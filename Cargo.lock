@@ -3597,11 +3597,13 @@ dependencies = [
  "parking_lot",
  "postage",
  "rand 0.9.1",
+ "reqwest 0.11.27",
  "rmcp",
  "schemars",
  "serde",
  "serde_json",
  "settings",
+ "settings_ui_macros",
  "smol",
  "tempfile",
  "tokio",
@@ -10965,26 +10967,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oauth2"
-version = "5.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
-dependencies = [
- "base64 0.21.7",
- "chrono",
- "getrandom 0.2.15",
- "http 1.3.1",
- "rand 0.8.5",
- "reqwest 0.12.15 (registry+https://github.com/rust-lang/crates.io-index)",
- "serde",
- "serde_json",
- "serde_path_to_error",
- "sha2",
- "thiserror 1.0.69",
- "url",
-]
-
-[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -13948,7 +13930,6 @@ dependencies = [
  "chrono",
  "futures 0.3.31",
  "http 1.3.1",
- "oauth2",
  "paste",
  "pin-project-lite",
  "process-wrap",
@@ -13964,7 +13945,6 @@ dependencies = [
  "tokio-util",
  "tower-service",
  "tracing",
- "url",
 ]
 
 [[package]]
@@ -14007,7 +13987,6 @@ version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e40ecf59e742e03336be6a3d53755e789fd05a059fa22dfa0ed624722319e183"
 dependencies = [
- "cpal",
  "dasp_sample",
  "hound",
  "num-rational",

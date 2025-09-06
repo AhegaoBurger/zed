@@ -2,13 +2,15 @@
 
 use anyhow::Result;
 use collections::HashMap;
+use gpui::App;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use settings::{Settings, SettingsSources};
+use settings::{Settings, SettingsKey, SettingsSources, VsCodeSettings};
+use settings_ui_macros::SettingsUi;
 use std::path::PathBuf;
 
 /// Settings for context servers
-#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, SettingsUi)]
 pub struct ContextServerSettings {
     /// List of configured context servers
     #[serde(default)]
@@ -165,9 +167,6 @@ fn default_api_key_header() -> String {
     "X-API-Key".to_string()
 }
 
-impl Settings for ContextServerSettings {
-    const KEY: Option<&'static str> = Some("context_servers");
-}
 
 impl ContextServerSettings {
     /// Get all enabled servers

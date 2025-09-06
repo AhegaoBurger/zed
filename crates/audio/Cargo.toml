@@ -19,6 +19,6 @@ gpui.workspace = true
 settings.workspace = true
 schemars.workspace = true
 serde.workspace = true
-rodio = { workspace = true, features = [ "wav", "playback", "tracing" ] }
+rodio = { workspace = true, features = [ "wav", "tracing" ] }
 util.workspace = true
 workspace-hack.workspace = true
