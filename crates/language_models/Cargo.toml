@@ -59,6 +59,7 @@ ui_input.workspace = true
 util.workspace = true
 vercel = { workspace = true, features = ["schemars"] }
 x_ai = { workspace = true, features = ["schemars"] }
+z_ai = { workspace = true, features = ["schemars"] }
 zed_env_vars.workspace = true
 
 [dev-dependencies]
