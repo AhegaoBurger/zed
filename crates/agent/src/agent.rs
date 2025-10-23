@@ -867,6 +867,11 @@ impl NativeAgentConnection {
                                     thread.update_retry_status(status, cx)
                                 })?;
                             }
+                            ThreadEvent::PlanUpdate(plan) => {
+                                acp_thread.update(cx, |thread, cx| {
+                                    thread.update_plan(plan, cx);
+                                })?;
+                            }
                             ThreadEvent::Stop(stop_reason) => {
                                 log::debug!("Assistant message complete: {:?}", stop_reason);
                                 return Ok(acp::PromptResponse {

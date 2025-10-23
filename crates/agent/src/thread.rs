@@ -551,6 +551,22 @@ pub enum ThreadEvent {
     ToolCallAuthorization(ToolCallAuthorization),
     Retry(acp_thread::RetryStatus),
     Stop(acp::StopReason),
+    PlanUpdate(acp::Plan),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanItem {
+    pub id: String,
+    pub content: String,
+    pub status: PlanItemStatus,
+    pub file_path: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanItemStatus {
+    Pending,
+    InProgress,
+    Completed,
 }
 
 #[derive(Debug)]
@@ -611,6 +627,7 @@ pub struct Thread {
     pub(crate) prompt_capabilities_rx: watch::Receiver<acp::PromptCapabilities>,
     pub(crate) project: Entity<Project>,
     pub(crate) action_log: Entity<ActionLog>,
+    plan_items: Vec<PlanItem>,
 }
 
 impl Thread {
@@ -669,6 +686,7 @@ impl Thread {
             prompt_capabilities_rx,
             project,
             action_log,
+            plan_items: Vec::new(),
         }
     }
 
@@ -1034,6 +1052,116 @@ impl Thread {
         cx.notify()
     }
 
+    pub fn plan_items(&self) -> &[PlanItem] {
+        &self.plan_items
+    }
+
+    pub fn update_plan_item_status(
+        &mut self,
+        item_id: &str,
+        status: PlanItemStatus,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(item) = self.plan_items.iter_mut().find(|item| item.id == item_id) {
+            item.status = status;
+            cx.notify();
+        }
+    }
+
+    pub fn add_plan_item(&mut self, item: PlanItem, cx: &mut Context<Self>) {
+        self.plan_items.push(item);
+        cx.notify();
+    }
+
+    pub fn set_plan_items(&mut self, items: Vec<PlanItem>, cx: &mut Context<Self>) {
+        self.plan_items = items;
+        cx.notify();
+    }
+
+    pub fn clear_completed_plan_items(&mut self, cx: &mut Context<Self>) {
+        self.plan_items
+            .retain(|item| !matches!(item.status, PlanItemStatus::Completed));
+        cx.notify();
+    }
+
+    fn parse_plan_items_from_text(text: &str) -> Vec<PlanItem> {
+        let mut items = Vec::new();
+        let mut id_counter = 0;
+
+        for line in text.lines() {
+            let trimmed = line.trim();
+
+            // Match checkbox-style tasks: - [ ] or - [x] or - [X]
+            if let Some(task_text) = trimmed.strip_prefix("- [") {
+                if let Some(rest) = task_text.strip_prefix("] ") {
+                    let status = PlanItemStatus::Pending;
+                    let (content, file_path) = Self::extract_file_path(rest);
+                    items.push(PlanItem {
+                        id: format!("plan_item_{}", id_counter),
+                        content,
+                        status,
+                        file_path,
+                    });
+                    id_counter += 1;
+                } else if let Some(rest) = task_text.strip_prefix("x] ").or_else(|| task_text.strip_prefix("X] ")) {
+                    let status = PlanItemStatus::Completed;
+                    let (content, file_path) = Self::extract_file_path(rest);
+                    items.push(PlanItem {
+                        id: format!("plan_item_{}", id_counter),
+                        content,
+                        status,
+                        file_path,
+                    });
+                    id_counter += 1;
+                }
+            }
+            // Match numbered lists: 1. or 2. etc.
+            else if let Some((_, task_text)) = trimmed.split_once(". ") {
+                if trimmed.chars().next().map_or(false, |c| c.is_ascii_digit()) {
+                    let (content, file_path) = Self::extract_file_path(task_text);
+                    items.push(PlanItem {
+                        id: format!("plan_item_{}", id_counter),
+                        content,
+                        status: PlanItemStatus::Pending,
+                        file_path,
+                    });
+                    id_counter += 1;
+                }
+            }
+        }
+
+        items
+    }
+
+    fn extract_file_path(text: &str) -> (String, Option<String>) {
+        // Look for patterns like (file: path/to/file.rs) or [file: path/to/file.rs]
+        if let Some(file_start) = text.rfind("(file:").or_else(|| text.rfind("[file:")) {
+            if let Some(file_end) = text[file_start..].find(')').or_else(|| text[file_start..].find(']')) {
+                let file_path = text[file_start + 6..file_start + file_end].trim().to_string();
+                let content = text[..file_start].trim().to_string();
+                return (content, Some(file_path));
+            }
+        }
+
+        // Look for patterns like `path/to/file.rs` at the end
+        if let Some(backtick_start) = text.rfind('`') {
+            if let Some(backtick_end) = text[..backtick_start].rfind('`') {
+                let potential_path = &text[backtick_end + 1..backtick_start];
+                if potential_path.contains('/') || potential_path.contains('\\') {
+                    let file_path = potential_path.trim().to_string();
+                    let content = format!(
+                        "{}{}",
+                        text[..backtick_end].trim(),
+                        text[backtick_start + 1..].trim()
+                    ).trim().to_string();
+                    return (content, Some(file_path));
+                }
+            }
+        }
+
+        (text.to_string(), None)
+    }
+
     #[cfg(any(test, feature = "test-support"))]
     pub fn last_message(&self) -> Option<Message> {
         if let Some(message) = self.pending_message.clone() {
@@ -1302,12 +1430,34 @@ impl Thread {
                 })?;
             }
 
-            this.update(cx, |this, cx| {
+            let plan_items = this.update(cx, |this, cx| {
                 this.flush_pending_message(cx);
                 if this.title.is_none() && this.pending_title_generation.is_none() {
                     this.generate_title(cx);
                 }
+                this.plan_items.clone()
             })?;
+
+            // Send plan update if we have plan items
+            if !plan_items.is_empty() {
+                let acp_plan = acp::Plan {
+                    meta: None,
+                    entries: plan_items
+                        .iter()
+                        .map(|item| acp::PlanEntry {
+                            meta: None,
+                            content: item.content.clone(),
+                            priority: acp::PlanEntryPriority::Normal,
+                            status: match item.status {
+                                PlanItemStatus::Pending => acp::PlanEntryStatus::Pending,
+                                PlanItemStatus::InProgress => acp::PlanEntryStatus::InProgress,
+                                PlanItemStatus::Completed => acp::PlanEntryStatus::Completed,
+                            },
+                        })
+                        .collect(),
+                };
+                event_stream.send_plan_update(acp_plan);
+            }
 
             if let Some(error) = error {
                 attempt += 1;
@@ -1847,6 +1997,20 @@ impl Thread {
                     },
                 );
             }
+        }
+
+        // Check if the message contains plan items
+        let mut full_text = String::new();
+        for content in &message.content {
+            if let AgentMessageContent::Text(text) = content {
+                full_text.push_str(text);
+                full_text.push('\n');
+            }
+        }
+
+        let parsed_items = Self::parse_plan_items_from_text(&full_text);
+        if !parsed_items.is_empty() {
+            self.plan_items = parsed_items;
         }
 
         self.messages.push(Message::Agent(message));
@@ -2401,6 +2565,12 @@ impl ThreadEventStream {
 
     fn send_stop(&self, reason: acp::StopReason) {
         self.0.unbounded_send(Ok(ThreadEvent::Stop(reason))).ok();
+    }
+
+    fn send_plan_update(&self, plan: acp::Plan) {
+        self.0
+            .unbounded_send(Ok(ThreadEvent::PlanUpdate(plan)))
+            .ok();
     }
 
     fn send_canceled(&self) {
