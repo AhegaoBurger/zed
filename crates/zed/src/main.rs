@@ -590,6 +590,7 @@ pub fn main() {
         editor::init(cx);
         image_viewer::init(cx);
         repl::notebook::init(cx);
+        repl::notebook::marimo_init(cx);
         diagnostics::init(cx);
 
         audio::init(cx);
