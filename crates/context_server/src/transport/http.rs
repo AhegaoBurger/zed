@@ -8,6 +8,7 @@ use parking_lot::Mutex as SyncMutex;
 use smol::channel;
 use std::{pin::Pin, sync::Arc};
 
+use crate::oauth2::OAuth2TokenManager;
 use crate::transport::Transport;
 
 // Constants from MCP spec
@@ -27,6 +28,8 @@ pub struct HttpTransport {
     error_rx: channel::Receiver<String>,
     // Authentication headers to include in requests
     headers: HashMap<String, String>,
+    // OAuth2 token manager for automatic token handling
+    oauth2_manager: Option<Arc<OAuth2TokenManager>>,
 }
 
 impl HttpTransport {
@@ -49,6 +52,30 @@ impl HttpTransport {
             error_tx,
             error_rx,
             headers,
+            oauth2_manager: None,
+        }
+    }
+
+    pub fn with_oauth2(
+        http_client: Arc<dyn HttpClient>,
+        endpoint: String,
+        oauth2_manager: Arc<OAuth2TokenManager>,
+        executor: BackgroundExecutor,
+    ) -> Self {
+        let (response_tx, response_rx) = channel::unbounded();
+        let (error_tx, error_rx) = channel::unbounded();
+
+        Self {
+            http_client,
+            executor,
+            endpoint,
+            session_id: Arc::new(SyncMutex::new(None)),
+            response_tx,
+            response_rx,
+            error_tx,
+            error_rx,
+            headers: HashMap::default(),
+            oauth2_manager: Some(oauth2_manager),
         }
     }
 
@@ -66,6 +93,13 @@ impl HttpTransport {
                 format!("{}, {}", JSON_MIME_TYPE, EVENT_STREAM_MIME_TYPE),
             );
 
+        // Add OAuth2 token if manager is present
+        if let Some(oauth2_manager) = &self.oauth2_manager {
+            let token = oauth2_manager.ensure_valid_token(&self.endpoint).await?;
+            request_builder = request_builder.header("Authorization", format!("Bearer {}", token));
+        }
+
+        // Add custom headers
         for (key, value) in &self.headers {
             request_builder = request_builder.header(key.as_str(), value.as_str());
         }

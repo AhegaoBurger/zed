@@ -196,6 +196,21 @@ pub struct SessionSettingsContent {
 }
 
 #[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, MergeFrom, Debug)]
+pub struct OAuth2SettingsContent {
+    /// OAuth2 client ID.
+    pub client_id: String,
+    /// Authorization endpoint URL (optional, will be discovered from .well-known if not provided).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub authorization_url: Option<String>,
+    /// Token endpoint URL (optional, will be discovered from .well-known if not provided).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub token_url: Option<String>,
+    /// OAuth2 scopes to request.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub scopes: Vec<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, MergeFrom, Debug)]
 #[serde(untagged, rename_all = "snake_case")]
 pub enum ContextServerSettingsContent {
     Custom {
@@ -215,6 +230,9 @@ pub enum ContextServerSettingsContent {
         /// Optional headers to send.
         #[serde(skip_serializing_if = "HashMap::is_empty", default)]
         headers: HashMap<String, String>,
+        /// Optional OAuth2 configuration for automatic token management.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        oauth2: Option<OAuth2SettingsContent>,
     },
     Extension {
         /// Whether the context server is enabled.

@@ -114,6 +114,21 @@ pub struct GlobalLspSettings {
     pub button: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+pub struct OAuth2Settings {
+    /// OAuth2 client ID.
+    pub client_id: String,
+    /// Authorization endpoint URL (optional, will be discovered from .well-known if not provided).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub authorization_url: Option<String>,
+    /// Token endpoint URL (optional, will be discovered from .well-known if not provided).
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub token_url: Option<String>,
+    /// OAuth2 scopes to request.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub scopes: Vec<String>,
+}
+
 #[derive(Deserialize, Serialize, Clone, PartialEq, Eq, JsonSchema, Debug)]
 #[serde(tag = "source", rename_all = "snake_case")]
 pub enum ContextServerSettings {
@@ -144,6 +159,9 @@ pub enum ContextServerSettings {
         /// Optional authentication configuration for the remote server.
         #[serde(skip_serializing_if = "HashMap::is_empty", default)]
         headers: HashMap<String, String>,
+        /// Optional OAuth2 configuration for automatic token management.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        oauth2: Option<OAuth2Settings>,
     },
 }
 
@@ -160,10 +178,17 @@ impl From<settings::ContextServerSettingsContent> for ContextServerSettings {
                 enabled,
                 url,
                 headers,
+                oauth2,
             } => ContextServerSettings::Http {
                 enabled,
                 url,
                 headers,
+                oauth2: oauth2.map(|o| OAuth2Settings {
+                    client_id: o.client_id,
+                    authorization_url: o.authorization_url,
+                    token_url: o.token_url,
+                    scopes: o.scopes,
+                }),
             },
         }
     }
@@ -181,10 +206,17 @@ impl Into<settings::ContextServerSettingsContent> for ContextServerSettings {
                 enabled,
                 url,
                 headers,
+                oauth2,
             } => settings::ContextServerSettingsContent::Http {
                 enabled,
                 url,
                 headers,
+                oauth2: oauth2.map(|o| settings::OAuth2SettingsContent {
+                    client_id: o.client_id,
+                    authorization_url: o.authorization_url,
+                    token_url: o.token_url,
+                    scopes: o.scopes,
+                }),
             },
         }
     }

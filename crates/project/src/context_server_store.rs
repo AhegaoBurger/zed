@@ -102,6 +102,7 @@ pub enum ContextServerConfiguration {
     Http {
         url: url::Url,
         headers: HashMap<String, String>,
+        oauth2: Option<settings::OAuth2Settings>,
     },
 }
 
@@ -151,9 +152,14 @@ impl ContextServerConfiguration {
                 enabled: _,
                 url,
                 headers: auth,
+                oauth2,
             } => {
                 let url = url::Url::parse(&url).log_err()?;
-                Some(ContextServerConfiguration::Http { url, headers: auth })
+                Some(ContextServerConfiguration::Http {
+                    url,
+                    headers: auth,
+                    oauth2,
+                })
             }
         }
     }
@@ -487,13 +493,39 @@ impl ContextServerStore {
         }
 
         match configuration.as_ref() {
-            ContextServerConfiguration::Http { url, headers } => Ok(Arc::new(ContextServer::http(
-                id,
+            ContextServerConfiguration::Http {
                 url,
-                headers.clone(),
-                cx.http_client(),
-                cx.background_executor().clone(),
-            )?)),
+                headers,
+                oauth2,
+            } => {
+                if let Some(oauth2_config) = oauth2 {
+                    let oauth2_config = context_server::oauth2::OAuth2Config {
+                        client_id: oauth2_config.client_id.clone(),
+                        authorization_url: oauth2_config.authorization_url.clone(),
+                        token_url: oauth2_config.token_url.clone(),
+                        scopes: oauth2_config.scopes.clone(),
+                    };
+                    let oauth2_manager = Arc::new(context_server::oauth2::OAuth2TokenManager::new(
+                        oauth2_config,
+                        cx.http_client(),
+                    ));
+                    let transport = Arc::new(context_server::transport::HttpTransport::with_oauth2(
+                        cx.http_client(),
+                        url.to_string(),
+                        oauth2_manager,
+                        cx.background_executor().clone(),
+                    ));
+                    Ok(Arc::new(ContextServer::new(id, transport)))
+                } else {
+                    Ok(Arc::new(ContextServer::http(
+                        id,
+                        url,
+                        headers.clone(),
+                        cx.http_client(),
+                        cx.background_executor().clone(),
+                    )?))
+                }
+            }
             _ => {
                 let root_path = self
                     .project

@@ -23,6 +23,7 @@ gpui.workspace = true
 http_client = { workspace = true, features = ["test-support"] }
 log.workspace = true
 net.workspace = true
+oauth2.workspace = true
 parking_lot.workspace = true
 postage.workspace = true
 schemars.workspace = true
